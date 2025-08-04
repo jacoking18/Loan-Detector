@@ -1,67 +1,48 @@
 # app.py
+
 import streamlit as st
-import os
-from typing import List
+import pandas as pd
+from utils import parser
 
-# ----------------------
-# 🔧 CONFIGURATION
-# ----------------------
-MAX_FILE_SIZE_MB = 10
-MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
-
-# ----------------------
-# 🎨 PAGE SETUP
-# ----------------------
-st.set_page_config(page_title="CAPNOW - Loan Detection Tool", layout="wide")
-st.title("📄 CAPNOW Loan Detection Tool")
+st.set_page_config(page_title="CapNow Loan Detector", layout="wide")
+st.title("💰 CapNow Loan Detector App")
 st.markdown("""
-Upload one or more **PDF bank statements** to detect:
-- 💸 **Large deposits** that may represent previous funding
-- 🔁 **Repeated daily/weekly withdrawals** that may indicate outstanding loans
-
-*This tool helps identify possible loan activity based on transaction patterns.*
+Upload multiple bank statement PDFs. The system will:
+- ✅ Detect **large deposits** (potential funding)
+- ✅ Detect **repeated withdrawals** (potential loans out)
 """)
 
-# ----------------------
-# 📤 FILE UPLOAD
-# ----------------------
-uploaded_files = st.file_uploader(
-    "Upload PDF Statements",
-    type=["pdf"],
-    accept_multiple_files=True,
-    help=f"You can upload multiple statements (Max per file: {MAX_FILE_SIZE_MB}MB)"
-)
-
-# ----------------------
-# 📋 FILE VALIDATION + STATUS
-# ----------------------
-def validate_file(file) -> List[str]:
-    errors = []
-    if file.size > MAX_FILE_SIZE_BYTES:
-        errors.append("File too large")
-    if not file.name.lower().endswith(".pdf"):
-        errors.append("Unsupported format")
-    return errors
+uploaded_files = st.file_uploader("Upload PDF Statements", type=["pdf"], accept_multiple_files=True)
 
 if uploaded_files:
-    st.subheader("📂 Uploaded Files")
+    all_transactions = []
+    large_deposits = []
+    repeated_withdrawals = []
+
     for file in uploaded_files:
-        errors = validate_file(file)
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            st.write(f"**{file.name}** ({round(file.size / 1024, 1)} KB)")
-        with col2:
-            if errors:
-                st.error(" ❌ ".join(errors))
-            else:
-                st.success("✅ Ready")
+        with st.spinner(f"Processing {file.name}..."):
+            text = parser.extract_text_from_pdf(file)
+            transactions = parser.extract_transactions(text)
+            deposits = parser.detect_large_deposits(transactions)
+            withdrawals = parser.detect_repeated_withdrawals(transactions)
 
-    st.info("Analysis and results will appear here in the next step.")
+            all_transactions.extend(transactions)
+            large_deposits.extend(deposits)
+            repeated_withdrawals.extend(withdrawals)
 
-# ----------------------
-# 📌 FOOTER
-# ----------------------
-st.markdown("""
----
-Built by **Capnow** | Empowering smarter funding decisions
-""")
+    st.subheader("📄 All Parsed Transactions")
+    st.dataframe(pd.DataFrame(all_transactions))
+
+    st.subheader("💸 Large Deposits Detected")
+    if large_deposits:
+        st.success(f"{len(large_deposits)} potential fundings found.")
+        st.dataframe(pd.DataFrame(large_deposits))
+    else:
+        st.info("No large deposits detected above threshold.")
+
+    st.subheader("📉 Repeated Withdrawals Detected")
+    if repeated_withdrawals:
+        st.warning(f"{len(repeated_withdrawals)} possible loans out detected.")
+        st.dataframe(pd.DataFrame(repeated_withdrawals))
+    else:
+        st.info("No repeated withdrawals detected.")
